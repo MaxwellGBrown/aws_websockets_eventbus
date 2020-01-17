@@ -1,0 +1,59 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  A single event listener that handles events from an Event Bus.
+
+Resources:
+  LambdaEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Take events and throw them directly to a lambda
+      EventBusName: !ImportValue example-event-bus-event-bus  # TODO This is the export value from eventbus_template.yaml
+      # Effectively match all events because the only event version is 0
+      EventPattern: |
+        {
+          "version": ["0"]
+        }
+      Targets:
+        - Arn: !GetAtt LambdaEventListener.Arn
+          Id: !Sub '${AWS::StackName}-event-handler'
+    DependsOn: 
+      - LambdaEventListener
+
+  LambdaEventRulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaEventListener.Arn
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt LambdaEventRule.Arn
+    DependsOn:
+      - LambdaEventListener
+      - LambdaEventRule
+
+  LambdaEventListener:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              print(event)
+              return
+    DependsOn: LambdaRole
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole

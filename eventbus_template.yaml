@@ -1,0 +1,16 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Event Bus to build event-driven applications around
+
+Resources:
+  EventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: !Sub "${AWS::StackName}-event-bus"
+
+Outputs:
+  EventBus:
+    Description: Name of created event bus
+    Value: !Ref EventBus
+    Export:
+      Name: !Sub "${AWS::StackName}-event-bus"

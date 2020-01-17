@@ -144,3 +144,24 @@ Resources:
                 Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketAPI}/*'
     DependsOn: 
       - WebSocketAPI
+
+Outputs:
+  WebSocketApiArn:
+    Description: Arn of WebSocketAPI
+    Value: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketAPI}/*'
+    Export:
+      Name: !Sub "${AWS::StackName}-api-arn"
+
+  WebSocketUrl:
+    Description: ws:// URL of deployed WebSocketAPI to connect to
+    Value: !Sub "wss://${WebSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/${ProductionStage}"
+    Export:
+      Name: !Sub "${AWS::StackName}-ws-url"
+
+  ConnectionsUrl:
+    Description: >
+      http:// URL of deployed WebSocketAPI to manage connections with.
+      Use as endpoint_url argument for apigatewaymanagementapi clients.
+    Value: !Sub "http://${WebSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/${ProductionStage}"
+    Export:
+      Name: !Sub "${AWS::StackName}-http-url"
