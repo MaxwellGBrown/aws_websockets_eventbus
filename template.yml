@@ -1,0 +1,146 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: API Gateway with websocket integration
+
+
+Resources:
+  WebSocketAPI:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+      ApiKeySelectionExpression: $request.header.x-api-key
+      Name: !Sub "${AWS::StackName}-api"
+
+  ProductionStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref WebSocketAPI
+      StageName: prod
+    DependsOn: WebSocketAPI
+
+  ProductionDeployment:
+    Type: AWS::ApiGatewayV2::Deployment
+    Properties:
+      ApiId: !Ref WebSocketAPI
+      StageName: prod
+    DependsOn:
+      - ProductionStage
+      # Need all routes built before doing a deployment
+      - DefaultRoute
+      - ConnectRoute
+      - DisconnectRoute
+
+  DefaultRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketAPI
+      RouteKey:  $default
+      Target: !Join [/, [integrations, !Ref DefaultTarget]]
+
+      # websocket authentication args
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+    DependsOn:
+      - WebSocketAPI
+      - DefaultTarget
+
+  DefaultTarget:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketAPI
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaEndpoint.Arn}/invocations'
+    DependsOn: 
+      - WebSocketAPI
+      - LambdaEndpoint
+
+  ConnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketAPI
+      RouteKey:  $connect
+      Target: !Join [/, [integrations, !Ref DefaultTarget]]
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+    DependsOn:
+      - WebSocketAPI
+      - DefaultTarget
+
+  DisconnectRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref WebSocketAPI
+      RouteKey:  $disconnect
+      Target: !Join [/, [integrations, !Ref DefaultTarget]]
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+    DependsOn:
+      - WebSocketAPI
+      - DefaultTarget
+
+  LambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaEndpoint.Arn
+      Principal: apigateway.amazonaws.com
+      # SourceArn: !GetAtt WebSocketAPI.Arn
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketAPI}/*'
+    DependsOn:
+      - WebSocketAPI
+      - LambdaEndpoint
+
+  LambdaEndpoint:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          def lambda_handler(event, context):
+              print(json.dumps(event))
+              client = boto3.client(
+                "apigatewaymanagementapi",
+                # URL of API Gateway request originated from
+                endpoint_url=f"https://{event['requestContext']['domainName']}"
+                             f"/{event['requestContext']['stage']}/",
+              )
+              connection_id = event["requestContext"].get("connectionId")
+              if event["requestContext"]["routeKey"] not in ("$connect", "$disconnect"):
+                  client.post_to_connection(
+                      Data=b"Hello World",
+                      ConnectionId=connection_id,
+                  )
+              return {"statusCode": 200}
+    DependsOn:
+      - LambdaRole
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Sub '${AWS::StackName}-api-connections'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "execute-api:ManageConnections"
+                # Resource: !GetAtt WebSocketAPI.Arn
+                Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketAPI}/*'
+    DependsOn: 
+      - WebSocketAPI
