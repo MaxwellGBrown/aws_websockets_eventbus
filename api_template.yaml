@@ -2,6 +2,11 @@ AWSTemplateFormatVersion: "2010-09-09"
 Description: API Gateway with websocket integration
 
 
+Parameters:
+  EventBusName:
+    Type: String
+    Description: Name of event bus to publish events to
+
 Resources:
   WebSocketAPI:
     Type: AWS::ApiGatewayV2::Api
@@ -96,10 +101,15 @@ Resources:
       Handler: index.lambda_handler
       Runtime: python3.7
       Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          EVENT_BUS: !Ref EventBusName
       Code:
         ZipFile: |
           import json
+          import os
           import boto3
+          eventbridge = boto3.client("events")
           def lambda_handler(event, context):
               print(json.dumps(event))
               client = boto3.client(
@@ -110,8 +120,17 @@ Resources:
               )
               connection_id = event["requestContext"].get("connectionId")
               if event["requestContext"]["routeKey"] not in ("$connect", "$disconnect"):
+                  eventbridge.put_events(Entries=[
+                      {
+                          "Source": connection_id,
+                          "Resources": [context.invoked_function_arn],
+                          "DetailType": "Websocket Message Recieved",
+                          "Detail": json.dumps({"Hello": "World"}),
+                          "EventBusName": os.getenv("EVENT_BUS"),
+                      }
+                  ])
                   client.post_to_connection(
-                      Data=b"Hello World",
+                      Data=b"Your message was recieved and put on the bus!",
                       ConnectionId=connection_id,
                   )
               return {"statusCode": 200}
@@ -142,6 +161,14 @@ Resources:
                   - "execute-api:ManageConnections"
                 # Resource: !GetAtt WebSocketAPI.Arn
                 Resource: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketAPI}/*'
+        - PolicyName: !Sub '${AWS::StackName}-put-events'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: "*"  # PutEvents does not restrict at the resource level
     DependsOn: 
       - WebSocketAPI
 
@@ -160,8 +187,8 @@ Outputs:
 
   ConnectionsUrl:
     Description: >
-      http:// URL of deployed WebSocketAPI to manage connections with.
+      https:// URL of deployed WebSocketAPI to manage connections with.
       Use as endpoint_url argument for apigatewaymanagementapi clients.
-    Value: !Sub "http://${WebSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/${ProductionStage}"
+    Value: !Sub "https://${WebSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/${ProductionStage}"
     Export:
       Name: !Sub "${AWS::StackName}-http-url"

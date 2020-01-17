@@ -2,12 +2,28 @@ AWSTemplateFormatVersion: 2010-09-09
 Description: >
   A single event listener that handles events from an Event Bus.
 
+Parameters:
+  EventBusName:
+    Type: String
+    Description: Name of event bus to listen for events on
+
+  # Both ConnectionsUrl & WebSocketApiArn are sourced from the same place.
+  # Both are composed but only one requires the deployed stage.
+  # Is there a better way to consolidate or pass them?
+  ConnectionsUrl:
+    Type: String
+    Description: http:// URL of websocket API Gateway to connect to
+
+  WebSocketApiArn:
+    Type: String
+    Description: The ARN of the Websocket API Gateway associated to ConnectionsUrl
+
 Resources:
   LambdaEventRule:
     Type: AWS::Events::Rule
     Properties:
       Description: Take events and throw them directly to a lambda
-      EventBusName: !ImportValue example-event-bus-event-bus  # TODO This is the export value from eventbus_template.yaml
+      EventBusName: !Ref EventBusName
       # Effectively match all events because the only event version is 0
       EventPattern: |
         {
@@ -36,11 +52,33 @@ Resources:
       Handler: index.lambda_handler
       Runtime: python3.7
       Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          EVENT_BUS: !Ref EventBusName
+          ENDPOINT_URL: !Ref ConnectionsUrl
       Code:
         ZipFile: |
+          import os
+          import boto3
+          client = boto3.client("apigatewaymanagementapi", endpoint_url=os.getenv("ENDPOINT_URL"))
+          hellos = [
+            "Hello",
+            "Bonjour",
+            "Hola",
+            "Guten tag",
+            "Shalom",
+            "Konnichiwa",
+            "Ni hao",
+          ]
           def lambda_handler(event, context):
+              print("url:", os.getenv("ENDPOINT_URL"))
               print(event)
-              return
+              for hello in hellos:
+                  client.post_to_connection(
+                      Data=f"{hello} {event['detail']['Hello']}".encode(),
+                      ConnectionId=event["source"],
+                  )
+
     DependsOn: LambdaRole
 
   LambdaRole:
@@ -57,3 +95,12 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Sub '${AWS::StackName}-api-connections'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "execute-api:ManageConnections"
+                Resource: !Ref WebSocketApiArn
