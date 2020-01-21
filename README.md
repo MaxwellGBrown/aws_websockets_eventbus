@@ -24,5 +24,6 @@
    	--parameter-overrides \
    	  EventBusName=$(aws cloudformation describe-stacks --stack-name example-event-bus --query "Stacks[0].Outputs[?OutputKey=='EventBus'].OutputValue" --output text) \
    	  ConnectionsUrl=$(aws cloudformation describe-stacks --stack-name example-event-websocket --query "Stacks[0].Outputs[?OutputKey=='ConnectionsUrl'].OutputValue" --output text) \
-   	  WebSocketApiArn=$(aws cloudformation describe-stacks --stack-name example-event-websocket --query "Stacks[0].Outputs[?OutputKey=='WebSocketApiArn'].OutputValue" --output text)
+   	  WebSocketApiArn=$(aws cloudformation describe-stacks --stack-name example-event-websocket --query "Stacks[0].Outputs[?OutputKey=='WebSocketApiArn'].OutputValue" --output text) \
+      Message=Hello
     ```

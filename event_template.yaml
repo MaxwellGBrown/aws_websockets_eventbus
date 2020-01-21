@@ -12,11 +12,15 @@ Parameters:
   # Is there a better way to consolidate or pass them?
   ConnectionsUrl:
     Type: String
-    Description: http:// URL of websocket API Gateway to connect to
+    Description: https:// URL of websocket API Gateway to connect to
 
   WebSocketApiArn:
     Type: String
     Description: The ARN of the Websocket API Gateway associated to ConnectionsUrl
+
+  Message:
+    Type: String
+    Description: The Hello in the Hello World message to stream to a connection
 
 Resources:
   LambdaEventRule:
@@ -56,28 +60,21 @@ Resources:
         Variables:
           EVENT_BUS: !Ref EventBusName
           ENDPOINT_URL: !Ref ConnectionsUrl
+          MESSAGE: !Ref Message
       Code:
         ZipFile: |
           import os
           import boto3
           client = boto3.client("apigatewaymanagementapi", endpoint_url=os.getenv("ENDPOINT_URL"))
-          hellos = [
-            "Hello",
-            "Bonjour",
-            "Hola",
-            "Guten tag",
-            "Shalom",
-            "Konnichiwa",
-            "Ni hao",
-          ]
           def lambda_handler(event, context):
               print("url:", os.getenv("ENDPOINT_URL"))
               print(event)
-              for hello in hellos:
-                  client.post_to_connection(
-                      Data=f"{hello} {event['detail']['Hello']}".encode(),
-                      ConnectionId=event["source"],
-                  )
+              message = os.getenv("MESSAGE", "Hello")
+              print(f"Message: {message!r}")
+              client.post_to_connection(
+                  Data=f"{message} {event['detail']['Hello']}".encode(),
+                  ConnectionId=event["source"],
+              )
 
     DependsOn: LambdaRole
 

@@ -125,7 +125,7 @@ Resources:
                           "Source": connection_id,
                           "Resources": [context.invoked_function_arn],
                           "DetailType": "Websocket Message Recieved",
-                          "Detail": json.dumps({"Hello": "World"}),
+                          "Detail": json.dumps({"Hello": event["body"]}),
                           "EventBusName": os.getenv("EVENT_BUS"),
                       }
                   ])
