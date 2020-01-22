@@ -13,4 +13,4 @@ Outputs:
     Description: Name of created event bus
     Value: !Ref EventBus
     Export:
-      Name: !Sub "${AWS::StackName}-event-bus"
+      Name: example-event-bus-id

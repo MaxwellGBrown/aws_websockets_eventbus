@@ -1,12 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: API Gateway with websocket integration
 
-
-Parameters:
-  EventBusName:
-    Type: String
-    Description: Name of event bus to publish events to
-
 Resources:
   WebSocketAPI:
     Type: AWS::ApiGatewayV2::Api
@@ -103,7 +97,7 @@ Resources:
       Role: !GetAtt LambdaRole.Arn
       Environment:
         Variables:
-          EVENT_BUS: !Ref EventBusName
+          EVENT_BUS: !ImportValue example-event-bus-id
       Code:
         ZipFile: |
           import json
@@ -177,13 +171,13 @@ Outputs:
     Description: Arn of WebSocketAPI
     Value: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketAPI}/*'
     Export:
-      Name: !Sub "${AWS::StackName}-api-arn"
+      Name: example-websocket-api-arn
 
   WebSocketUrl:
     Description: ws:// URL of deployed WebSocketAPI to connect to
     Value: !Sub "wss://${WebSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/${ProductionStage}"
     Export:
-      Name: !Sub "${AWS::StackName}-ws-url"
+      Name: example-websocket-wss-url
 
   ConnectionsUrl:
     Description: >
@@ -191,4 +185,4 @@ Outputs:
       Use as endpoint_url argument for apigatewaymanagementapi clients.
     Value: !Sub "https://${WebSocketAPI}.execute-api.${AWS::Region}.amazonaws.com/${ProductionStage}"
     Export:
-      Name: !Sub "${AWS::StackName}-http-url"
+      Name: example-websocket-http-url

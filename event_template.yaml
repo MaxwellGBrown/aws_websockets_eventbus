@@ -3,21 +3,6 @@ Description: >
   A single event listener that handles events from an Event Bus.
 
 Parameters:
-  EventBusName:
-    Type: String
-    Description: Name of event bus to listen for events on
-
-  # Both ConnectionsUrl & WebSocketApiArn are sourced from the same place.
-  # Both are composed but only one requires the deployed stage.
-  # Is there a better way to consolidate or pass them?
-  ConnectionsUrl:
-    Type: String
-    Description: https:// URL of websocket API Gateway to connect to
-
-  WebSocketApiArn:
-    Type: String
-    Description: The ARN of the Websocket API Gateway associated to ConnectionsUrl
-
   Message:
     Type: String
     Description: The Hello in the Hello World message to stream to a connection
@@ -27,7 +12,7 @@ Resources:
     Type: AWS::Events::Rule
     Properties:
       Description: Take events and throw them directly to a lambda
-      EventBusName: !Ref EventBusName
+      EventBusName: !ImportValue example-event-bus-id
       # Effectively match all events because the only event version is 0
       EventPattern: |
         {
@@ -58,8 +43,8 @@ Resources:
       Role: !GetAtt LambdaRole.Arn
       Environment:
         Variables:
-          EVENT_BUS: !Ref EventBusName
-          ENDPOINT_URL: !Ref ConnectionsUrl
+          EVENT_BUS: !ImportValue example-event-bus-id
+          ENDPOINT_URL: !ImportValue example-websocket-http-url
           MESSAGE: !Ref Message
       Code:
         ZipFile: |
@@ -100,4 +85,4 @@ Resources:
               - Effect: Allow
                 Action:
                   - "execute-api:ManageConnections"
-                Resource: !Ref WebSocketApiArn
+                Resource: !ImportValue example-websocket-api-arn
