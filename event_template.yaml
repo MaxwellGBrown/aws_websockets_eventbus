@@ -16,7 +16,7 @@ Resources:
       # Effectively match all events because the only event version is 0
       EventPattern: |
         {
-          "version": ["0"]
+          "detail-type": ["Hello World"]
         }
       Targets:
         - Arn: !GetAtt LambdaEventListener.Arn

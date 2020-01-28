@@ -118,7 +118,14 @@ Resources:
                       {
                           "Source": connection_id,
                           "Resources": [context.invoked_function_arn],
-                          "DetailType": "Websocket Message Recieved",
+                          "DetailType": "Hello World",
+                          "Detail": json.dumps({"Hello": event["body"]}),
+                          "EventBusName": os.getenv("EVENT_BUS"),
+                      },
+                      {
+                          "Source": connection_id,
+                          "Resources": [context.invoked_function_arn],
+                          "DetailType": "Throw it to the queue",
                           "Detail": json.dumps({"Hello": event["body"]}),
                           "EventBusName": os.getenv("EVENT_BUS"),
                       }

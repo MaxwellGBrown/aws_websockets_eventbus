@@ -1,0 +1,124 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  An SQS Queue listener to EventBridge for a task that needs buffering
+  or dead-lettering.
+
+Resources:
+  EventQueue:
+    Type: AWS::SQS::Queue
+
+  SQSEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      EventBusName: !ImportValue example-event-bus-id
+      EventPattern: |
+        {
+          "detail-type": ["Throw it to the queue"]
+        }
+      Targets:
+        - Arn: !GetAtt EventQueue.Arn
+          Id: !Sub '${AWS::StackName}-sqs-rule'
+    DependsOn:
+      - EventQueue
+
+  EventQueuePolicy:
+    # https://docs.aws.amazon.com/eventbridge/latest/userguide/resource-based-policies-eventbridge.html#sqs-permissions
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref EventQueue
+      PolicyDocument:
+        Id: !Sub '${AWS::StackName}-trust-events-to-queue' 
+        Version: '2012-10-17'
+        Statement:
+          - Sid: !Sub '${AWS::StackName}-trust-events-to-queue' 
+            Effect: Allow
+            Principal:
+              Service: events.amazonaws.com
+            Action: 
+              - "sqs:SendMessage"
+            Resource: !GetAtt EventQueue.Arn
+            Condition:
+              ArnEquals:
+                "aws:SourceArn": !GetAtt SQSEventRule.Arn
+    DependsOn:
+      - EventQueue
+      - SQSEventRule
+
+  LambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Sub '${AWS::StackName}-recieve-message'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt EventQueue.Arn
+        - PolicyName: !Sub '${AWS::StackName}-put-events'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - events:PutEvents
+                Resource: "*"  # PutEvents does not restrict at the resource level
+    DependsOn:
+      - EventQueue
+
+  LambdaQueueListener:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaRole.Arn
+      Environment:
+        Variables:
+          EVENT_BUS: !ImportValue example-event-bus-id
+      Code:
+        ZipFile: |
+          import json
+          import os
+          import boto3
+          eventbridge = boto3.client("events")
+          def lambda_handler(event, context):
+              print(event)
+              new_events = list()
+              for item in event["Records"]:
+                  message = json.loads(item['body'])
+                  detail = message["detail"]
+                  new_events.append({
+                      "Source": message["source"],
+                      "Resources": [context.invoked_function_arn],
+                      "DetailType": "Hello World",
+                      "Detail": json.dumps({"Hello": f"{detail['Hello']} this is from the queue"}),
+                      "EventBusName": os.getenv("EVENT_BUS"),
+                  })
+
+              eventbridge.put_events(Entries=new_events)
+
+    DependsOn: LambdaRole
+
+  QueueToLambdaEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt EventQueue.Arn
+      FunctionName: !GetAtt LambdaQueueListener.Arn
+    DependsOn:
+      - EventQueue
+      - LambdaQueueListener
