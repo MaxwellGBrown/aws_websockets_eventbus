@@ -5,6 +5,7 @@ import './App.css';
 export default class App extends Component {
   state = {
     url: '',
+    name: '',
     client: null,
     events: [],
     message: "",
@@ -12,7 +13,8 @@ export default class App extends Component {
 
   connect = (e) => {
     e.preventDefault();
-    const client = new WebSocket(this.state.url);
+    const url = `${this.state.url}?name=${this.state.name}`;
+    const client = new WebSocket(url);
 
     client.addEventListener('open', (e) => {
       this.addEvent(`Connected to ${this.state.url}`);
@@ -51,7 +53,11 @@ export default class App extends Component {
           <fieldset disabled={this.state.client}>
             <label htmlFor="url">
               Websocket URL
-              <input name="url" onChange={(e) => {this.setState({url: e.target.value})}} />
+              <input required name="url" onChange={(e) => {this.setState({url: e.target.value})}} />
+            </label>
+            <label>
+              Name
+              <input required name="name" onChange={(e) => {this.setState({name: e.target.value})}} />
             </label>
             <input type="submit" value="Connect" />
           </fieldset>
