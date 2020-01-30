@@ -13,7 +13,7 @@ Resources:
       EventBusName: !ImportValue example-event-bus-id
       EventPattern: |
         {
-          "detail-type": ["Throw it to the queue"]
+          "detail-type": ["Quote"]
         }
       Targets:
         - Arn: !GetAtt EventQueue.Arn
@@ -94,22 +94,30 @@ Resources:
         ZipFile: |
           import json
           import os
+          import urllib.request
           import boto3
           eventbridge = boto3.client("events")
           def lambda_handler(event, context):
               print(event)
               new_events = list()
+              print("Retrieving the quote of the day from https://quotes.rest/qod")
+              response_io = urllib.request.urlopen("https://quotes.rest/qod")
+              print("Quote retrieved!")
+              response = json.load(response_io)
+              message = response["contents"]["quotes"][-1]["quote"]
               for item in event["Records"]:
-                  message = json.loads(item['body'])
-                  detail = message["detail"]
+                  name = json.loads(item["body"])["detail"]["name"]
+                  # TODO Send a "Notification" instead of "Echo"
                   new_events.append({
-                      "Source": message["source"],
+                      "Source": "LambdaQueueListener",
                       "Resources": [context.invoked_function_arn],
-                      "DetailType": "Hello World",
-                      "Detail": json.dumps({"Hello": f"{detail['Hello']} this is from the queue"}),
+                      "DetailType": "Echo",
+                      "Detail": json.dumps({
+                          "message": message,
+                          "sender": name,
+                      }),
                       "EventBusName": os.getenv("EVENT_BUS"),
                   })
-
               eventbridge.put_events(Entries=new_events)
 
     DependsOn: LambdaRole

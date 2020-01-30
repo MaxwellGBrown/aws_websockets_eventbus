@@ -16,7 +16,7 @@ Resources:
       # Effectively match all events because the only event version is 0
       EventPattern: |
         {
-          "detail-type": ["Hello World"]
+          "detail-type": ["Echo"]
         }
       Targets:
         - Arn: !GetAtt LambdaEventListener.Arn
@@ -56,9 +56,10 @@ Resources:
               print(event)
               message = os.getenv("MESSAGE", "Hello")
               print(f"Message: {message!r}")
+              # TODO Publish "Notification" to event bus instead
               client.post_to_connection(
-                  Data=f"{message} {event['detail']['Hello']}".encode(),
-                  ConnectionId=event["source"],
+                  Data=f"{message} {event['detail']['message']} {message}".encode(),
+                  ConnectionId=event["detail"]["sender"],
               )
 
     DependsOn: LambdaRole

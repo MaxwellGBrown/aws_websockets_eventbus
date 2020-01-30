@@ -176,15 +176,20 @@ Resources:
                       {
                           "Source": connection_id,
                           "Resources": [context.invoked_function_arn],
-                          "DetailType": "Hello World",
-                          "Detail": json.dumps({"Hello": event["body"]}),
+                          "DetailType": "Echo",
+                          "Detail": json.dumps({
+                              "sender": connection_id,
+                              "message": event["body"],
+                          }),
                           "EventBusName": os.getenv("EVENT_BUS"),
                       },
                       {
                           "Source": connection_id,
                           "Resources": [context.invoked_function_arn],
-                          "DetailType": "Throw it to the queue",
-                          "Detail": json.dumps({"Hello": event["body"]}),
+                          "DetailType": "Quote",
+                          "Detail": json.dumps({
+                              "name": connection_id,
+                          }),
                           "EventBusName": os.getenv("EVENT_BUS"),
                       }
                   ])
