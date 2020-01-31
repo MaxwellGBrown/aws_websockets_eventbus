@@ -111,10 +111,10 @@ Resources:
                   new_events.append({
                       "Source": "LambdaQueueListener",
                       "Resources": [context.invoked_function_arn],
-                      "DetailType": "Echo",
+                      "DetailType": "Notification",
                       "Detail": json.dumps({
                           "message": message,
-                          "sender": name,
+                          "recipients": [name],
                       }),
                       "EventBusName": os.getenv("EVENT_BUS"),
                   })

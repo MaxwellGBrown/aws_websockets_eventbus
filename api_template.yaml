@@ -236,6 +236,7 @@ Resources:
     DependsOn: 
       - WebSocketAPI
 
+
 Outputs:
   WebSocketApiArn:
     Description: Arn of WebSocketAPI

@@ -1,0 +1,79 @@
+AWSTemplateFormatVersion: 2010-09-09
+Description: >
+  An EventBus listener that matches Notification events to the
+  connectionId in the WebSocket API Gateway for outbound messages
+
+Resources:
+  NotificationLambda:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt NotificationLambdaRole.Arn
+      Environment:
+        Variables:
+          ENDPOINT_URL: !ImportValue example-websocket-http-url
+      Code:
+        ZipFile: |
+          import os
+          import boto3
+          client = boto3.client("apigatewaymanagementapi", endpoint_url=os.getenv("ENDPOINT_URL"))
+          def lambda_handler(event, context):
+              print(event)
+              message = event["detail"]["message"]
+              for recipient in event["detail"]["recipients"]:
+                  client.post_to_connection(
+                    Data=message.encode(),
+                    ConnectionId=recipient,
+                  )
+    DependsOn: NotificationLambdaRole
+
+  NotificationLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument: 
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: !Sub '${AWS::StackName}-api-connections'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "execute-api:ManageConnections"
+                Resource: !ImportValue example-websocket-api-arn
+
+  NotificationEventRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Description: Send outbound messagses from the EventBus through open sockets
+      EventBusName: !ImportValue example-event-bus-id
+      EventPattern: |
+        {
+          "detail-type": ["Notification"]
+        }
+      Targets:
+        - Arn: !GetAtt NotificationLambda.Arn
+          Id: !Sub '${AWS::StackName}-notification-event'
+    DependsOn:
+      - NotificationLambda
+
+  NotificationEventRulePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt NotificationLambda.Arn
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt NotificationEventRule.Arn
+    DependsOn:
+      - NotificationLambda
+      - NotificationEventRule

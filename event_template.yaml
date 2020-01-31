@@ -44,23 +44,30 @@ Resources:
       Environment:
         Variables:
           EVENT_BUS: !ImportValue example-event-bus-id
-          ENDPOINT_URL: !ImportValue example-websocket-http-url
           MESSAGE: !Ref Message
       Code:
         ZipFile: |
+          import json
           import os
           import boto3
-          client = boto3.client("apigatewaymanagementapi", endpoint_url=os.getenv("ENDPOINT_URL"))
+          eventbridge = boto3.client("events")
           def lambda_handler(event, context):
-              print("url:", os.getenv("ENDPOINT_URL"))
               print(event)
               message = os.getenv("MESSAGE", "Hello")
-              print(f"Message: {message!r}")
-              # TODO Publish "Notification" to event bus instead
-              client.post_to_connection(
-                  Data=f"{message} {event['detail']['message']} {message}".encode(),
-                  ConnectionId=event["detail"]["sender"],
-              )
+              events = [
+                  {
+                      "Source": "LambdaEventListener",
+                      "Resources": [context.invoked_function_arn],
+                      "DetailType": "Notification",
+                      "Detail": json.dumps({
+                          "message": f"{message} {event['detail']['message']} {message}",
+                          "recipients": [event["detail"]["sender"]],
+                      }),
+                      "EventBusName": os.getenv("EVENT_BUS"),
+                  }
+              ]
+              print(events)
+              eventbridge.put_events(Entries=events)
 
     DependsOn: LambdaRole
 
@@ -79,11 +86,11 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: !Sub '${AWS::StackName}-api-connections'
+        - PolicyName: !Sub '${AWS::StackName}-put-events'
           PolicyDocument:
             Version: 2012-10-17
             Statement:
               - Effect: Allow
                 Action:
-                  - "execute-api:ManageConnections"
-                Resource: !ImportValue example-websocket-api-arn
+                  - events:PutEvents
+                Resource: "*"  # PutEvents does not restrict at the resource level
