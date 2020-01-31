@@ -162,6 +162,10 @@ Resources:
           import os
           import boto3
           eventbridge = boto3.client("events")
+          handlers = {
+              "Echo": lambda event: {"sender": event["requestContext"]["connectionId"], "message": event["body"]["message"]},
+              "Quote": lambda event: {"name": event["requestContext"]["connectionId"]},
+          }
           def lambda_handler(event, context):
               print(json.dumps(event))
               client = boto3.client(
@@ -171,32 +175,24 @@ Resources:
                              f"/{event['requestContext']['stage']}/",
               )
               connection_id = event["requestContext"].get("connectionId")
-              if event["requestContext"]["routeKey"] not in ("$connect", "$disconnect"):
-                  eventbridge.put_events(Entries=[
-                      {
-                          "Source": connection_id,
-                          "Resources": [context.invoked_function_arn],
-                          "DetailType": "Echo",
-                          "Detail": json.dumps({
-                              "sender": connection_id,
-                              "message": event["body"],
-                          }),
-                          "EventBusName": os.getenv("EVENT_BUS"),
-                      },
-                      {
-                          "Source": connection_id,
-                          "Resources": [context.invoked_function_arn],
-                          "DetailType": "Quote",
-                          "Detail": json.dumps({
-                              "name": connection_id,
-                          }),
-                          "EventBusName": os.getenv("EVENT_BUS"),
-                      }
-                  ])
-                  client.post_to_connection(
-                      Data=b"Your message was recieved and put on the bus!",
-                      ConnectionId=connection_id,
-                  )
+              if event["requestContext"]["routeKey"] in ("$connect", "$disconnect"):
+                  return {"statusCode": 200}
+              event["body"] = json.loads(event["body"])
+              handler = handlers.get(event["body"]["action"])
+              detail = handler(event)
+              eventbridge.put_events(Entries=[
+                  {
+                      "Source": "LambdaEndpoint",
+                      "Resources": [context.invoked_function_arn],
+                      "DetailType": event["body"]["action"],
+                      "Detail": json.dumps(detail),
+                      "EventBusName": os.getenv("EVENT_BUS"),
+                  },
+              ])
+              client.post_to_connection(
+                  Data=b"Your message was recieved and put on the bus!",
+                  ConnectionId=connection_id,
+              )
               return {"statusCode": 200}
     DependsOn:
       - LambdaRole

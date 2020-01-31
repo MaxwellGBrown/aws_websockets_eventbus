@@ -9,9 +9,19 @@ const renderEvent = (props) => {
   const datetime = `${timestamp.getHours()}:${timestamp.getMinutes()}:${timestamp.getSeconds()}.${timestamp.getMilliseconds()}`;
 
   if (type === "send") {
-    return (<li>{datetime} Sent: {message}</li>);
+    return (
+      <li>
+        {datetime} <b>Sent</b><br/>
+        <pre>{JSON.stringify(message, null, 2)}</pre>
+      </li>
+    );
   } else if (type === "recieve") {
-    return (<li>{datetime} Recieved: {message}</li>);
+    return (
+      <li>
+        {datetime} <b>Recieved</b><br/>
+        <pre>{JSON.stringify(message, null, 2)}</pre>
+      </li>
+    );
   } 
 
   return (<li>{datetime} {message}</li>);
@@ -24,6 +34,8 @@ export default class App extends Component {
     name: '',
     client: null,
     events: [],
+
+    action: "Echo",
     message: "",
   };
 
@@ -59,11 +71,15 @@ export default class App extends Component {
 
   sendMessage = (e) => {
     e.preventDefault();
-    const { message } = this.state;
-    this.state.client.send(message);
+    const { action, message } = this.state;
+    const socketMessage = {
+      action,
+      message,
+    };
+    this.state.client.send(JSON.stringify(socketMessage));
     this.addEvent({
       type: "send",
-      message: message,
+      message: socketMessage,
     });
   }
 
@@ -94,11 +110,18 @@ export default class App extends Component {
 
         <form onSubmit={this.sendMessage}>
           <fieldset disabled={!this.state.client}>
-           <label htmlFor="message" >
-             Send message
-             <input name="message" onChange={(e) => {this.setState({message: e.target.value})}} />
-             <input type="submit" value="Send" />
+           <label htmlFor="action">
+             Action
+             <select value={this.state.action} onChange={(e) => {this.setState({action: e.target.value})}}>
+               <option value="Echo">Echo</option> 
+               <option value="Quote">Quote of the Day</option>
+             </select>
            </label>
+           <label htmlFor="message" >
+             Message
+             <input name="message" onChange={(e) => {this.setState({message: e.target.value})}} />
+           </label>
+           <input type="submit" value="Send" />
            <input type="button" value="disconnect" onClick={() => {this.state.client.close()}} />
           </fieldset>
         </form>
