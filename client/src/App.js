@@ -2,6 +2,22 @@ import React, { Component } from 'react';
 // import io from 'socket.io-client';
 import './App.css';
 
+
+const renderEvent = (props) => {
+  const { message, type, timestamp } = props;
+
+  const datetime = `${timestamp.getHours()}:${timestamp.getMinutes()}:${timestamp.getSeconds()}.${timestamp.getMilliseconds()}`;
+
+  if (type === "send") {
+    return (<li>{datetime} Sent: {message}</li>);
+  } else if (type === "recieve") {
+    return (<li>{datetime} Recieved: {message}</li>);
+  } 
+
+  return (<li>{datetime} {message}</li>);
+};
+
+
 export default class App extends Component {
   state = {
     url: '',
@@ -17,7 +33,10 @@ export default class App extends Component {
     const client = new WebSocket(url);
 
     client.addEventListener('open', (e) => {
-      this.addEvent(`Connected to ${this.state.url}`);
+      this.addEvent({
+        type: "connect",
+        message: `Connected to ${this.state.url}`,
+      });
     });
 
     client.addEventListener('message', this.recieveMessage);
@@ -26,11 +45,15 @@ export default class App extends Component {
   }
 
   onDisconnect = () => {
-    this.addEvent(`Disconnected from ${this.state.url}`);
+    this.addEvent({
+      type: "disconnect",
+      message: `Disconnected from ${this.state.url}`,
+    });
     this.setState({client: null});
   }
 
   addEvent = (message) => {
+    message["timestamp"] = new Date();
     this.setState((state) => ({events: [...state.events, message]}))
   }
 
@@ -38,12 +61,18 @@ export default class App extends Component {
     e.preventDefault();
     const { message } = this.state;
     this.state.client.send(message);
-    this.addEvent(`Sent: "${message}"`)
+    this.addEvent({
+      type: "send",
+      message: message,
+    });
   }
 
   recieveMessage = (e) => {
     const { data } = e;
-    this.addEvent(`Recieved: "${data}"`);
+    this.addEvent({
+      type: "recieve",
+      message: data,
+    });
   }
 
   render() {
@@ -74,8 +103,10 @@ export default class App extends Component {
           </fieldset>
         </form>
         
-        <ol>
-          {this.state.events.map((e, idx) => <li key={idx}>{e}</li>)}
+        <ol style={{
+          listStyle: "none",
+        }}>
+          {this.state.events.map(renderEvent)}
         </ol>
       </div>
     );
