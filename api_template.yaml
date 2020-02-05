@@ -10,6 +10,7 @@ Resources:
       ApiKeySelectionExpression: $request.header.x-api-key
       Name: !Sub "${AWS::StackName}-api"
 
+
   ProductionStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
@@ -30,11 +31,12 @@ Resources:
       - DisconnectRoute
       - Authorizer
 
+
   DefaultRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref WebSocketAPI
-      RouteKey:  $default
+      RouteKey: $default
       Target: !Join [/, [integrations, !Ref DefaultTarget]]
 
       # websocket authentication args
@@ -44,21 +46,11 @@ Resources:
       - WebSocketAPI
       - DefaultTarget
 
-  DefaultTarget:
-    Type: AWS::ApiGatewayV2::Integration
-    Properties:
-      ApiId: !Ref WebSocketAPI
-      IntegrationType: AWS_PROXY
-      IntegrationUri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaEndpoint.Arn}/invocations'
-    DependsOn: 
-      - WebSocketAPI
-      - LambdaEndpoint
-
   ConnectRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref WebSocketAPI
-      RouteKey:  $connect
+      RouteKey: $connect
       Target: !Join [/, [integrations, !Ref DefaultTarget]]
       ApiKeyRequired: false
       AuthorizationType: CUSTOM
@@ -80,79 +72,62 @@ Resources:
       - WebSocketAPI
       - DefaultTarget
 
-  Authorizer:
-    Type: AWS::ApiGatewayV2::Authorizer
+  EchoRoute:
+    Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref WebSocketAPI
-      AuthorizerType: REQUEST  # Web Socket APIs must use REQUEST
-      AuthorizerUri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaAuthorizer.Arn}/invocations'
-      Name: !Sub "${AWS::StackName}-authorizer"
-      IdentitySource:
-        # Native WebSocket client does not support headers for sockets.
-        # For this example, ?name=xxx will act as an authentication token
-        - route.request.querystring.name
+      RouteKey: Echo
+      Target: !Join [/, [integrations, !Ref DefaultTarget]]
+
+      # websocket authentication args
+      ApiKeyRequired: false
+      AuthorizationType: NONE
     DependsOn:
-      - LambdaAuthorizer
+      - WebSocketAPI
+      - DefaultTarget
 
-  LambdaAuthorizer:
-    Type: AWS::Lambda::Function
+  QuoteRoute:
+    Type: AWS::ApiGatewayV2::Route
     Properties:
-      Handler: index.lambda_handler
-      Runtime: python3.7
-      Role: !GetAtt LambdaRole.Arn  # TODO Does this deserve a separate role?
-      Code:
-        ZipFile: |
-          def lambda_handler(event, context):
-              print(event)
-              response = {
-                  "principalId": event["queryStringParameters"]["name"],  # This would be the user id
-                  "policyDocument": {
-                      "Version": "2012-10-17",
-                      "Statement": [
-                          {
-                              "Action": "execute-api:Invoke",
-                              "Effect": "Allow",
-                              "Resource": event["methodArn"],
-                          }
-                      ],
-                  },
-                  "context": {
-                      "foo": "bar",
-                  },
-              }
-              print(response)
-              return response
+      ApiId: !Ref WebSocketAPI
+      RouteKey: Quote
+      Target: !Join [/, [integrations, !Ref DefaultTarget]]
 
-  LambdaAuthorizerPermission:
+      # websocket authentication args
+      ApiKeyRequired: false
+      AuthorizationType: NONE
+    DependsOn:
+      - WebSocketAPI
+      - DefaultTarget
+
+  DefaultTarget:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref WebSocketAPI
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${DefaultLambdaEndpoint.Arn}/invocations'
+    DependsOn:
+      - WebSocketAPI
+      - DefaultLambdaEndpoint
+
+  DefaultLambdaEndpointPermission:
     Type: AWS::Lambda::Permission
     Properties:
       Action: lambda:InvokeFunction
-      FunctionName: !GetAtt LambdaAuthorizer.Arn
+      FunctionName: !GetAtt DefaultLambdaEndpoint.Arn
       Principal: apigateway.amazonaws.com
       # SourceArn: !GetAtt WebSocketAPI.Arn
       SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketAPI}/*'
     DependsOn:
       - WebSocketAPI
-      - LambdaAuthorizer
+      - DefaultLambdaEndpoint
 
-  LambdaEndpointPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !GetAtt LambdaEndpoint.Arn
-      Principal: apigateway.amazonaws.com
-      # SourceArn: !GetAtt WebSocketAPI.Arn
-      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketAPI}/*'
-    DependsOn:
-      - WebSocketAPI
-      - LambdaEndpoint
-
-  LambdaEndpoint:
+  DefaultLambdaEndpoint:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.lambda_handler
       Runtime: python3.7
-      Role: !GetAtt LambdaRole.Arn
+      Role: !GetAtt LambdaEndpointRole.Arn
       Environment:
         Variables:
           EVENT_BUS: !ImportValue example-event-bus-id
@@ -165,6 +140,7 @@ Resources:
           handlers = {
               "Echo": lambda event: {"sender": event["requestContext"]["connectionId"], "message": event["body"]["message"]},
               "Quote": lambda event: {"name": event["requestContext"]["connectionId"]},
+              "$connect": lambda event: {"name": event["requestContext"]["authorizer"]["principalId"], "connectionId": event["requestContext"]["connectionId"]},
           }
           def lambda_handler(event, context):
               print(json.dumps(event))
@@ -175,32 +151,44 @@ Resources:
                              f"/{event['requestContext']['stage']}/",
               )
               connection_id = event["requestContext"].get("connectionId")
-              if event["requestContext"]["routeKey"] in ("$connect", "$disconnect"):
-                  return {"statusCode": 200}
-              event["body"] = json.loads(event["body"])
-              handler = handlers.get(event["body"]["action"])
+              route_key = event["requestContext"]["routeKey"]
+              if route_key in ("$connect", "$disconnect"):
+                  pass
+              elif route_key not in handlers:
+                  client.post_to_connection(
+                      Data=f'Unrecognized action "{route_key}".'.encode(),
+                      ConnectionId=connection_id,
+                  )
+              else:
+                  client.post_to_connection(
+                      Data=b"Your message was recieved and put on the bus!",
+                      ConnectionId=connection_id,
+                  )
+              handler = handlers.get(route_key, lambda _e: {})
+              try:
+                  event["body"] = json.loads(event["body"])
+              except KeyError:
+                  # $connect & $disconnect don't have a body and I'm lazy
+                  body = {}
               detail = handler(event)
-              eventbridge.put_events(Entries=[
-                  {
-                      "Source": "LambdaEndpoint",
-                      "Resources": [context.invoked_function_arn],
-                      "DetailType": event["body"]["action"],
-                      "Detail": json.dumps(detail),
-                      "EventBusName": os.getenv("EVENT_BUS"),
-                  },
-              ])
-              client.post_to_connection(
-                  Data=b"Your message was recieved and put on the bus!",
-                  ConnectionId=connection_id,
-              )
+              if detail:
+                  eventbridge.put_events(Entries=[
+                      {
+                          "Source": "DefaultLambdaEndpoint",
+                          "Resources": [context.invoked_function_arn],
+                          "DetailType": event["requestContext"]["routeKey"],
+                          "Detail": json.dumps(detail),
+                          "EventBusName": os.getenv("EVENT_BUS"),
+                      },
+                  ])
               return {"statusCode": 200}
     DependsOn:
-      - LambdaRole
+      - LambdaEndpointRole
 
-  LambdaRole:
+  LambdaEndpointRole:
     Type: AWS::IAM::Role
     Properties:
-      AssumeRolePolicyDocument: 
+      AssumeRolePolicyDocument:
         Version: 2012-10-17
         Statement:
           - Effect: Allow
@@ -229,8 +217,83 @@ Resources:
                 Action:
                   - events:PutEvents
                 Resource: "*"  # PutEvents does not restrict at the resource level
-    DependsOn: 
+    DependsOn:
       - WebSocketAPI
+
+
+  Authorizer:
+    Type: AWS::ApiGatewayV2::Authorizer
+    Properties:
+      ApiId: !Ref WebSocketAPI
+      AuthorizerType: REQUEST  # Web Socket APIs must use REQUEST
+      AuthorizerUri: !Sub 'arn:${AWS::Partition}:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaAuthorizer.Arn}/invocations'
+      Name: !Sub "${AWS::StackName}-authorizer"
+      IdentitySource:
+        # Native WebSocket client does not support headers for sockets.
+        # For this example, ?name=xxx will act as an authentication token
+        - route.request.querystring.name
+    DependsOn:
+      - LambdaAuthorizer
+
+  LambdaAuthorizer:
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt LambdaAuthorizerRole.Arn
+      Code:
+        ZipFile: |
+          def lambda_handler(event, context):
+              print(event)
+              response = {
+                  "principalId": event["queryStringParameters"]["name"],  # This would be the user id
+                  "policyDocument": {
+                      "Version": "2012-10-17",
+                      "Statement": [
+                          {
+                              "Action": "execute-api:Invoke",
+                              "Effect": "Allow",
+                              "Resource": event["methodArn"],
+                          }
+                      ],
+                  },
+                  "context": {
+                      "foo": "bar",
+                  },
+              }
+              print(response)
+              return response
+    DependsOn:
+      - LambdaAuthorizerRole
+
+  LambdaAuthorizerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+    DependsOn:
+      - WebSocketAPI
+
+  LambdaAuthorizerPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !GetAtt LambdaAuthorizer.Arn
+      Principal: apigateway.amazonaws.com
+      # SourceArn: !GetAtt WebSocketAPI.Arn
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${WebSocketAPI}/*'
+    DependsOn:
+      - WebSocketAPI
+      - LambdaAuthorizer
 
 
 Outputs:
