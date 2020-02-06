@@ -138,9 +138,10 @@ Resources:
           import boto3
           eventbridge = boto3.client("events")
           handlers = {
-              "Echo": lambda event: {"sender": event["requestContext"]["connectionId"], "message": event["body"]["message"]},
-              "Quote": lambda event: {"name": event["requestContext"]["connectionId"]},
+              "Echo": lambda event: {"sender": event["requestContext"]["authorizer"]["principalId"], "message": event["body"]["message"]},
+              "Quote": lambda event: {"name": event["requestContext"]["authorizer"]["principalId"]},
               "$connect": lambda event: {"name": event["requestContext"]["authorizer"]["principalId"], "connectionId": event["requestContext"]["connectionId"]},
+              "$disconnect": lambda event: {"name": event["requestContext"]["authorizer"]["principalId"], "connectionId": event["requestContext"]["connectionId"]},
           }
           def lambda_handler(event, context):
               print(json.dumps(event))
@@ -150,8 +151,8 @@ Resources:
                 endpoint_url=f"https://{event['requestContext']['domainName']}"
                              f"/{event['requestContext']['stage']}/",
               )
-              connection_id = event["requestContext"].get("connectionId")
               route_key = event["requestContext"]["routeKey"]
+              connection_id = event["requestContext"].get("connectionId")
               if route_key in ("$connect", "$disconnect"):
                   pass
               elif route_key not in handlers:

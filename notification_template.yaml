@@ -13,20 +13,56 @@ Resources:
       Environment:
         Variables:
           ENDPOINT_URL: !ImportValue example-websocket-http-url
+          CONNECTIONS_TABLE: !Ref ConnectionsTable
       Code:
         ZipFile: |
           import os
+          import traceback
           import boto3
+          import boto3.dynamodb.conditions as conditions
           client = boto3.client("apigatewaymanagementapi", endpoint_url=os.getenv("ENDPOINT_URL"))
+          connections_table = boto3.resource("dynamodb").Table(os.getenv("CONNECTIONS_TABLE"))
           def lambda_handler(event, context):
               print(event)
-              message = event["detail"]["message"]
-              for recipient in event["detail"]["recipients"]:
-                  client.post_to_connection(
-                    Data=message.encode(),
-                    ConnectionId=recipient,
+              if event["detail-type"] == "$connect":
+                  record = {
+                      "Name": event["detail"]["name"],
+                      "ConnectionId": event["detail"]["connectionId"],
+                  }
+                  print(f"Putting {record!r} into {os.getenv('CONNECTIONS_TABLE')}")
+                  connections_table.put_item(Item=record)
+                  return
+              elif event["detail-type"] == "$disconnect":
+                  connections_table.delete_item(
+                      Key={
+                          "Name": event["detail"]["name"],
+                          "ConnectionId": event["detail"]["connectionId"],
+                      }
                   )
-    DependsOn: NotificationLambdaRole
+                  return 
+              message = event["detail"]["message"]
+              print(f"Message: {message!r}")
+              for recipient in event["detail"]["recipients"]:
+                  print(f"Retrieving connections for recipient {recipient!r}")
+                  response = connections_table.query(
+                      KeyConditionExpression="#recipient = :recipient",
+                      ExpressionAttributeValues={":recipient": recipient},
+                      ExpressionAttributeNames={"#recipient": "Name"},
+                  )
+                  print(f"Query results: {response!r}")
+                  for record in response["Items"]:  # TODO Paginator
+                      print(f"Sending message to {recipient!r} with connection {record['ConnectionId']!r}")
+                      try:
+                          client.post_to_connection(
+                              Data=message.encode(),
+                              ConnectionId=record["ConnectionId"],
+                          )
+                      except Exception as e:
+                          print("Failed to send message!")
+                          traceback.print_exc()
+
+    DependsOn: 
+      - NotificationLambdaRole
 
   NotificationLambdaRole:
     Type: AWS::IAM::Role
@@ -51,6 +87,18 @@ Resources:
                 Action:
                   - "execute-api:ManageConnections"
                 Resource: !ImportValue example-websocket-api-arn
+        - PolicyName: !Sub '${AWS::StackName}-connections-table'
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Effect: Allow
+                Action:
+                  - "dynamodb:PutItem"
+                  - "dynamodb:DeleteItem"
+                  - "dynamodb:Query"
+                Resource: !GetAtt ConnectionsTable.Arn
+
+    DependsOn: ConnectionsTable
 
   NotificationEventRule:
     Type: AWS::Events::Rule
@@ -59,7 +107,7 @@ Resources:
       EventBusName: !ImportValue example-event-bus-id
       EventPattern: |
         {
-          "detail-type": ["Notification"]
+          "detail-type": ["Notification", "$connect", "$disconnect"]
         }
       Targets:
         - Arn: !GetAtt NotificationLambda.Arn
@@ -77,3 +125,25 @@ Resources:
     DependsOn:
       - NotificationLambda
       - NotificationEventRule
+
+  ConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: Name
+          AttributeType: S
+        - AttributeName: ConnectionId
+          AttributeType: S
+        # - AttributeName: Expires
+        #   AttributeType: N
+      KeySchema:
+        - AttributeName: Name
+          KeyType: HASH
+        - AttributeName: ConnectionId
+          KeyType: RANGE
+      # TimeToLiveSpecification:
+      #   - AttributeName: Expires
+      #     Enabled: true
+      ProvisionedThroughput:
+        ReadCapacityUnits: 3
+        WriteCapacityUnits: 3
