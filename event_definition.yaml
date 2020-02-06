@@ -1,0 +1,91 @@
+asyncapi: 2.0.0
+info:
+  title: Example Event Driven API
+  version: '1.0.0'
+  description: |
+    Example Event Driven API fronted by a Websocket.
+    
+    Paste into https://playground.asyncapi.io/
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+defaultContentType: application/json
+
+channels:
+  echo:
+    description: Echo a sent message to anybody potential event listeners
+    publish:
+      message:
+        payload:
+          type: object
+          properties:
+            DetailType:
+              const: Echo
+            Detail:
+              type: object
+              properties:
+                sender:
+                  type: string
+                message:
+                  type: string
+           
+  notification:
+    description: Send websocket message to any connection with matching name
+    publish:
+      message:
+        payload:
+          type: object
+          properties:
+            DetailType:
+              const: Notification
+            Detail:
+              type: object
+              properties:
+                message:
+                  type: string
+                recipients:
+                  type: array
+                  items:
+                    type: string
+          
+  quote:
+    description: Retrieve a quote for the specified user name
+    publish:
+      message:
+        payload:
+          DetailType:
+            const: Quote
+          Detail:
+            type: object
+            properties:
+              name:
+                type: string    
+  
+  new_connection:
+    description: A new socket connection has been established
+    publish:
+      message:
+        payload:
+          DetailType:
+            const: $connect
+          Detail:
+            type: object
+            properties:
+              name:
+                type: string
+              connectionId:
+                type: string
+                
+  disconnected:
+    description: A socket has been disconnected
+    publish:
+      message:
+        payload:
+          DetailType:
+            const: $disconnect
+          Detail:
+            type: object
+            properties:
+              connectionId:
+                type: string
