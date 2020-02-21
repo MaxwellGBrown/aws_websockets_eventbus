@@ -16,6 +16,10 @@ Resources:
     Properties:
       ApiId: !Ref WebSocketAPI
       StageName: prod
+      DefaultRouteSettings:
+        DataTraceEnabled: True
+        DetailedMetricsEnabled: True
+        LoggingLevel: INFO
     DependsOn: WebSocketAPI
 
   ProductionDeployment:
