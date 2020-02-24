@@ -1,0 +1,69 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  Event Registry & Schema for events related to the event bus
+
+Resources:
+  Registry:
+    Type: AWS::EventSchemas::Registry
+
+  ExampleSchema:
+    Type: AWS::EventSchemas::Schema
+    Properties:
+      RegistryName: !Ref Registry
+      Type: OpenApi3
+      Content: >
+        {
+          "openapi": "3.0.0",
+          "info": {
+            "version": "1.0.0",
+            "title": "ExampleSchema"
+          },
+          "paths": {},
+          "components": {
+            "schemas": {
+              "Echo": {
+                "type": "object",
+                "required": [ "sender", "message" ],
+                "properties": {
+                  "sender": { "type": "string" },
+                  "message": { "type": "string" }
+                }
+              },
+              "Notification": {
+                "type": "object",
+                "required": [ "message", "recipients" ],
+                "properties": {
+                  "message": { "type": "string" },
+                  "recipients": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              },
+              "Quote": {
+                "type": "object",
+                "required": [ "name" ],
+                "properties": {
+                  "name": { "type": "string" }
+                }
+              },
+              "$connect": {
+                "type": "object",
+                "required": [ "name", "connectionId" ],
+                "properties": {
+                  "name": { "type": "string" },
+                  "connectionId": { "type": "string" }
+                }
+              },
+              "$disconnect": {
+                "type": "object",
+                "required": [ "connectionId" ],
+                "properties": {
+                  "connectionId": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+    DependsOn:
+      - Registry
