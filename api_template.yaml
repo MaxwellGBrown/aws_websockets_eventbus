@@ -10,7 +10,6 @@ Resources:
       ApiKeySelectionExpression: $request.header.x-api-key
       Name: !Sub "${AWS::StackName}-api"
 
-
   ProductionStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
@@ -126,12 +125,25 @@ Resources:
       - WebSocketAPI
       - DefaultLambdaEndpoint
 
+  DefaultLambdaEndpointLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      CompatibleRuntimes:
+        - python3.7
+      Content:
+        S3Bucket: ae-lambda-deploy
+        S3Key: 0b7fff89a704944bc54c4b5fe90b8ef5
+
   DefaultLambdaEndpoint:
     Type: AWS::Lambda::Function
     Properties:
       Handler: index.lambda_handler
       Runtime: python3.7
+      TracingConfig:
+        Mode: Active
       Role: !GetAtt LambdaEndpointRole.Arn
+      Layers:
+        - !Ref DefaultLambdaEndpointLayer
       Environment:
         Variables:
           EVENT_BUS: !ImportValue example-event-bus-id
@@ -140,7 +152,9 @@ Resources:
           import json
           import os
           import boto3
+          from aws_xray_sdk.core import patch_all
           eventbridge = boto3.client("events")
+          patch_all(double_patch=True)
           handlers = {
               "Echo": lambda event: {"sender": event["requestContext"]["authorizer"]["principalId"], "message": event["body"]["message"]},
               "Quote": lambda event: {"name": event["requestContext"]["authorizer"]["principalId"]},
@@ -204,6 +218,7 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
       Policies:
         - PolicyName: !Sub '${AWS::StackName}-api-connections'
           PolicyDocument:

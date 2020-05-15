@@ -59,6 +59,7 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
       Policies:
         - PolicyName: !Sub '${AWS::StackName}-recieve-message'
           PolicyDocument:
@@ -87,9 +88,13 @@ Resources:
       Handler: index.lambda_handler
       Runtime: python3.7
       Role: !GetAtt LambdaRole.Arn
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           EVENT_BUS: !ImportValue example-event-bus-id
+      TracingConfig:
+        Mode: Active
       Code:
         ZipFile: |
           import json

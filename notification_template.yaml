@@ -10,6 +10,8 @@ Resources:
       Handler: index.lambda_handler
       Runtime: python3.7
       Role: !GetAtt NotificationLambdaRole.Arn
+      TracingConfig:
+        Mode: Active
       Environment:
         Variables:
           ENDPOINT_URL: !ImportValue example-websocket-http-url
@@ -78,6 +80,7 @@ Resources:
               - sts:AssumeRole
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+        - arn:aws:iam::aws:policy/AWSXRayDaemonWriteAccess
       Policies:
         - PolicyName: !Sub '${AWS::StackName}-api-connections'
           PolicyDocument:
